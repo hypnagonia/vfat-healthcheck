@@ -2,36 +2,63 @@ const fs = require('fs')
 const fetch = require('node-fetch')
 
 // file with HAR from browser's network
-const filename = 'metamaskNetworkHAR.har';
+const filename = 'metamaskNetworkHAR.har'
+
+const RPCList = [
+  'https://harmony-0-rpc.gateway.pokt.network',
+  'https://api.s0.t.hmny.io',
+  'https://a.api.s0.t.hmny.io',
+];
 
 (async () => {
   try {
-    let jsonData = JSON.parse(fs.readFileSync(filename, 'utf-8'))
 
-    const query = async () => {
-      const request = entries[0].request
+    const queryRPC = async (rpcUrl, entries) => {
+      let id = 1
+      const query = async (entry) => {
+        const request = entry.request
 
-      const r = await fetch(request.url, {
-        method: request.method,
-        headers: {'content-type': 'application/json'},
-        body: request.postData.text,
+        const json = JSON.parse(request.postData.text)
 
-      }).then(r => r.json())
+        // query for latest block
+        if (json.method === 'eth_call') {
+          json.params = [json.params[0], 'latest']
+        }
 
-      console.log(request.url, request.postData.text, r)
-      return r
+        json.id = id
+        id++
+
+        const r = await fetch(rpcUrl, {
+          method: request.method,
+          headers: {'content-type': 'application/json'},
+          body: JSON.stringify(json),
+
+        }).then(r => r.json())
+
+        if (r.error) {
+          console.log(rpcUrl, json, r)
+          throw new Error(JSON.stringify(r.error))
+        }
+        return r
+      }
+
+      const requests = jsonData.log.entries.filter(
+          e => e._resourceType === 'fetch')
+
+      await Promise.all(requests.map(query))
+
+      console.log(`${rpcUrl} ${requests.length} requests finished`)
     }
 
-    const entries = jsonData.log.entries.filter(
-        e => e._resourceType === 'fetch')
+    let jsonData = JSON.parse(fs.readFileSync(filename, 'utf-8'))
 
-    await Promise.all(entries.map(query))
-
-    console.log(`${entries.length} queries finished`)
+    for (let rpcUrl of RPCList) {
+      await queryRPC(rpcUrl, jsonData.log.entries)
+    }
 
     process.exit(0)
   } catch (e) {
-    console.error('Failed with err', e)
+    console.error('Failed', e)
     process.exit(1)
   }
 })()
