@@ -42,7 +42,7 @@ const RPCList = [
         return r
       }
 
-      const requests = jsonData.log.entries.filter(
+      const requests = entries.filter(
           e => e._resourceType === 'fetch')
 
       await Promise.all(requests.map(query))
